@@ -41,14 +41,19 @@ function CharSplitLMMinibatchLoader.create(data_dir, batch_size, seq_length, spl
     print('loading data files...')
     local data = torch.load(tensor_file)
     self.vocab_mapping = torch.load(vocab_file)
+    print(self.vocab_mapping)
 
-    -- cut off the end so that it divides evenly
-    local len = data:size(1)
-    if len % (batch_size * seq_length) ~= 0 then
-        print('cutting off end of data so that the batches/sequences divide evenly')
-        data = data:sub(1, batch_size * seq_length 
-                    * math.floor(len / (batch_size * seq_length)))
-    end
+    local newline = self.vocab_mapping['\n']
+    print("newline")
+    print(newline)
+
+    -- -- cut off the end so that it divides evenly
+    -- local len = data:size(1)
+    -- if len % (batch_size * seq_length) ~= 0 then
+    --     print('cutting off end of data so that the batches/sequences divide evenly')
+    --     data = data:sub(1, batch_size * seq_length
+    --                 * math.floor(len / (batch_size * seq_length)))
+    -- end
 
     -- count vocab
     self.vocab_size = 0
@@ -61,12 +66,33 @@ function CharSplitLMMinibatchLoader.create(data_dir, batch_size, seq_length, spl
     self.batch_size = batch_size
     self.seq_length = seq_length
 
-    local ydata = data:clone()
-    ydata:sub(1,-2):copy(data:sub(2,-1))
-    ydata[-1] = data[1]
-    self.x_batches = data:view(batch_size, -1):split(seq_length, 2)  -- #rows = #batches
-    self.nbatches = #self.x_batches
-    self.y_batches = ydata:view(batch_size, -1):split(seq_length, 2)  -- #rows = #batches
+    local indices = torch.linspace(1, data:nElement(), data:nElement())[data:eq(newline)]
+    print(indices)
+
+    if indices:nElement() % batch_size ~= 0 then
+        print('cutting off end of data so that the batches/sequences divide evenly')
+    end
+    self.nbatches = math.floor(indices:nElement() / batch_size)
+    print("#batches:")
+    print (self.nbatches)
+    x_data = torch.ByteTensor(self.batch_size * self.nbatches * self.seq_length)
+    y_data = torch.ByteTensor(self.batch_size * self.nbatches * self.seq_length)
+    pos = 1
+
+    sol = 1
+    for tune=1,self.nbatches * self.batch_size do
+       eol = indices[tune]
+       x_data:sub(pos, pos+self.seq_length-1):copy(data:sub(sol,
+							    sol+self.seq_length-1))
+       y_data:sub(pos, pos+self.seq_length-1):copy(data:sub(sol+self.seq_length + 1,
+							    sol+2*self.seq_length))
+       sol = eol + 1
+       pos = pos + self.seq_length
+    end
+
+    self.x_batches = x_data:view(batch_size, -1):split(seq_length, 2)
+    self.y_batches = y_data:view(batch_size, -1):split(seq_length, 2)
+
     assert(#self.x_batches == #self.y_batches)
 
     -- lets try to be helpful here
