@@ -66,28 +66,30 @@ function CharSplitLMMinibatchLoader.create(data_dir, batch_size, seq_length, spl
     self.batch_size = batch_size
     self.seq_length = seq_length
 
-    local indices = torch.linspace(1, data:nElement(), data:nElement())[data:eq(newline)]
-    print(indices)
+    local len = data:size(1)
+    local n_pairs = len / (self.seq_length * 2 + 2)
 
-    if indices:nElement() % batch_size ~= 0 then
+    if n_pairs % batch_size ~= 0 then
         print('cutting off end of data so that the batches/sequences divide evenly')
     end
-    self.nbatches = math.floor(indices:nElement() / batch_size)
+    self.nbatches = math.floor(n_pairs / batch_size)
     print("#batches:")
     print (self.nbatches)
+
     x_data = torch.ByteTensor(self.batch_size * self.nbatches * self.seq_length)
     y_data = torch.ByteTensor(self.batch_size * self.nbatches * self.seq_length)
-    pos = 1
+    w_pos = 1
+    r_pos = 1
 
-    sol = 1
     for tune=1,self.nbatches * self.batch_size do
-       eol = indices[tune]
-       x_data:sub(pos, pos+self.seq_length-1):copy(data:sub(sol,
-							    sol+self.seq_length-1))
-       y_data:sub(pos, pos+self.seq_length-1):copy(data:sub(sol+self.seq_length + 1,
-							    sol+2*self.seq_length))
-       sol = eol + 1
-       pos = pos + self.seq_length
+       x_data:sub(w_pos,
+		  w_pos+self.seq_length-1):copy(data:sub(r_pos,
+							 r_pos+self.seq_length-1))
+       y_data:sub(w_pos,
+		  w_pos+self.seq_length-1):copy(data:sub(r_pos+self.seq_length + 1,
+							 r_pos+2*self.seq_length))
+       r_pos = r_pos + 2*self.seq_length + 2
+       w_pos = w_pos + self.seq_length
     end
 
     self.x_batches = x_data:view(batch_size, -1):split(seq_length, 2)
